@@ -18,8 +18,8 @@ const emailProvider = new NodemailerAdapter({
   port: 587,
   secure: false,
   auth: {
-    user: process.env['EMAIL_USER'] || 'ahsant670@gmail.com',
-    pass: process.env['EMAIL_PASS'] || 'mzmdcuuewysgtgul',
+    user: process.env['EMAIL_USER'] || '',
+    pass: process.env['EMAIL_PASS'] || ''
   },
   from: 'noreply@yourdomain.com',
 });
@@ -66,11 +66,9 @@ const otpService = new SecureEmailOtp(
         Hi {{email}}
         We received a request to reset your password for your account. If you did not make this request, you can safely ignore this email.
         To reset your password, please use {{otp}} to verify your email and reset password.
-        Regards,
-        Dynamite Lifestyle Team
       `,
-      senderName: 'Dynamite Lifestyle',
-      senderEmail: 'info@dynamitelifestyle.com',
+      senderName: 'OTP Service',
+      senderEmail: 'noreply@yourdomain.com',
     },
 
   }

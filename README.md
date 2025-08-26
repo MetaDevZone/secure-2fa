@@ -1,4 +1,4 @@
-# Secure Email OTP
+# Secure 2FA
 
 A secure, developer-friendly Node.js package for email-based OTP (2FA) with strong security controls, built in TypeScript.
 
@@ -16,7 +16,7 @@ A secure, developer-friendly Node.js package for email-based OTP (2FA) with stro
 ## 📦 Installation
 
 ```bash
-npm install secure-email-otp
+npm install secure-2fa
 ```
 
 ## 🏃‍♂️ Quick Start
@@ -29,7 +29,7 @@ import {
   MemoryDatabaseAdapter,
   NodemailerAdapter,
   MemoryRateLimiterAdapter,
-} from "secure-email-otp";
+} from "secure-2fa";
 
 // Initialize adapters
 const dbAdapter = new MemoryDatabaseAdapter();
@@ -94,7 +94,7 @@ import {
   PrismaDatabaseAdapter, // For PostgreSQL/MySQL/SQLite
   NodemailerAdapter,
   MemoryRateLimiterAdapter,
-} from "secure-email-otp";
+} from "secure-2fa";
 
 // Development (Memory)
 const dbAdapter = new MemoryDatabaseAdapter();
@@ -159,7 +159,7 @@ const config = {
 #### Nodemailer (SMTP)
 
 ```typescript
-import { NodemailerAdapter } from "secure-email-otp";
+import { NodemailerAdapter } from "secure-2fa";
 
 const emailProvider = new NodemailerAdapter({
   host: "smtp.gmail.com",
@@ -176,7 +176,7 @@ const emailProvider = new NodemailerAdapter({
 #### SendGrid
 
 ```typescript
-import { SendGridAdapter } from "secure-email-otp";
+import { SendGridAdapter } from "secure-2fa";
 
 const emailProvider = new SendGridAdapter({
   apiKey: "your-sendgrid-api-key",
@@ -189,7 +189,7 @@ const emailProvider = new SendGridAdapter({
 #### Memory (Development/Testing)
 
 ```typescript
-import { MemoryDatabaseAdapter } from "secure-email-otp";
+import { MemoryDatabaseAdapter } from "secure-2fa";
 
 const dbAdapter = new MemoryDatabaseAdapter();
 ```
@@ -197,7 +197,7 @@ const dbAdapter = new MemoryDatabaseAdapter();
 #### Prisma (Production)
 
 ```typescript
-import { PrismaDatabaseAdapter } from "secure-email-otp";
+import { PrismaDatabaseAdapter } from "secure-2fa";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -258,7 +258,7 @@ const otpService = new SecureEmailOtp(/* ... */, {
 The package provides specific error types for different failure scenarios:
 
 ```typescript
-import { OtpError, OtpErrorCode } from "secure-email-otp";
+import { OtpError, OtpErrorCode } from "secure-2fa";
 
 try {
   await otpService.verify(/* ... */);
@@ -359,8 +359,8 @@ await otpService.cleanup();
 ## 🆘 Support
 
 - 📖 [Documentation](./docs/)
-- 🐛 [Issues](https://github.com/yourusername/secure-email-otp/issues)
-- 💬 [Discussions](https://github.com/yourusername/secure-email-otp/discussions)
+- 🐛 [Issues](https://github.com/MetaDevZone/secure-2fa/issues)
+- 💬 [Discussions](https://github.com/MetaDevZone/secure-2fa/discussions)
 
 ## 🔗 Related
 

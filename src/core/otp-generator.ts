@@ -28,8 +28,6 @@ export class OtpGenerator {
       otp += (bytes[i]! % 10).toString();
     }
 
-    console.log('Generated OTP:', otp); 
-
     return otp;
   }
 

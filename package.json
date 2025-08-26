@@ -1,5 +1,5 @@
 {
-  "name": "secure-email-otp",
+  "name": "secure-2fa",
   "version": "1.0.0",
   "description": "A secure, developer-friendly Node.js package for email-based OTP (2FA) with strong security controls",
   "main": "dist/index.js",
@@ -38,16 +38,16 @@
     "typescript",
     "nodejs"
   ],
-  "author": "Your Name",
+  "author": "MetaDevZone",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/secure-email-otp.git"
+    "url": "https://github.com/MetaDevZone/secure-2fa.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/secure-email-otp/issues"
+    "url": "https://github.com/MetaDevZone/secure-2fa/issues"
   },
-  "homepage": "https://github.com/yourusername/secure-email-otp#readme",
+  "homepage": "https://github.com/MetaDevZone/secure-2fa#readme",
   "dependencies": {
     "@getbrevo/brevo": "^3.0.1",
     "@sendgrid/mail": "^8.0.1",
