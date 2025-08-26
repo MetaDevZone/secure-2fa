@@ -5,7 +5,7 @@ A secure, developer-friendly Node.js package for email-based OTP (2FA) with stro
 ## 🚀 Features
 
 - **🔒 Secure OTP Generation**: Cryptographically secure OTPs with HMAC protection
-- **📧 Multiple Email Providers**: Support for Nodemailer, SendGrid, and custom providers
+- **📧 Multiple Email Providers**: Support for Nodemailer, SendGrid, Mailcub and custom providers
 - **🗄️ Flexible Database**: Works with any database via adapter pattern (Prisma, Mongoose, etc.)
 - **⚡ Rate Limiting**: Built-in rate limiting with configurable windows
 - **🛡️ Security Controls**: Context binding, replay prevention, audit logging
@@ -367,6 +367,7 @@ await otpService.cleanup();
 - [Prisma](https://prisma.io/) - Database toolkit
 - [Nodemailer](https://nodemailer.com/) - Email sending
 - [SendGrid](https://sendgrid.com/) - Email delivery
+- [MailCub](https://mailcub.com/) - Affordable Email Hosting & Delivery That Works – For Half the Price
 - [bcrypt](https://github.com/dcodeIO/bcrypt.js) - Password hashing
 
 ## 📄 License

@@ -11,7 +11,7 @@ A secure, developer-friendly Node.js package for email-based OTP (2FA) with ente
 ## 🚀 Features
 
 - **🔒 Cryptographically Secure**: HMAC-protected OTPs with bcrypt hashing
-- **📧 Multi-Provider Email**: Nodemailer, SendGrid, Brevo, Postmark, Mailgun, and custom adapters
+- **📧 Multi-Provider Email**: Nodemailer, SendGrid, Brevo, Postmark, Mailgun, Mailcub and custom adapters
 - **🗄️ Database Agnostic**: Memory, MongoDB, PostgreSQL, MySQL via adapter pattern
 - **⚡ Built-in Rate Limiting**: Configurable windows with Redis support
 - **🛡️ Context Binding**: IP, User-Agent, device fingerprinting for security
