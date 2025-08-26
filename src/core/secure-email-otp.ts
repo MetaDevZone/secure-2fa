@@ -9,7 +9,8 @@ import {
   OtpError,
   OtpErrorCode,
   OtpEvent,
-  EventHandlers
+  EventHandlers,
+  HealthCheckResult
 } from '../types';
 import { OtpGenerator } from './otp-generator';
 import { EmailTemplates, TemplateData } from '../templates/email-templates';
@@ -301,6 +302,63 @@ export class SecureEmailOtp {
   }
 
   /**
+   * Health check for monitoring
+   */
+  async healthCheck(): Promise<HealthCheckResult> {
+    const checks = {
+      database: false,
+      emailProvider: false,
+      rateLimiter: false,
+    };
+
+    try {
+      // Test database connection
+      await this.dbAdapter.cleanupExpiredOtps();
+      checks.database = true;
+    } catch (error) {
+      // Database check failed
+    }
+
+    try {
+      // Test email provider by attempting a test send (will be caught)
+      await this.emailProvider.sendEmail({
+        to: 'health-check@example.com',
+        subject: 'Health Check',
+        text: 'Health check test'
+      });
+      checks.emailProvider = true;
+    } catch (error) {
+      // Email provider check failed
+    }
+
+    try {
+      // Test rate limiter
+      await this.rateLimiter.checkLimit('health-check', 1, 60000);
+      checks.rateLimiter = true;
+    } catch (error) {
+      // Rate limiter check failed
+    }
+
+    const healthyChecks = Object.values(checks).filter(Boolean).length;
+    let status: 'healthy' | 'degraded' | 'unhealthy';
+
+    if (healthyChecks === 3) {
+      status = 'healthy';
+    } else if (healthyChecks >= 1) {
+      status = 'degraded';
+    } else {
+      status = 'unhealthy';
+    }
+
+    return {
+      status,
+      checks,
+      timestamp: new Date(),
+      version: '1.0.1',
+    };
+  }
+
+  /**
    * Send email OTP
    */
   private async sendEmailOtp(email: string, otp: string, context: string): Promise<void> {
@@ -374,10 +432,10 @@ export class SecureEmailOtp {
     if (handler) {
       try {
         await handler(event);
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error(`Error in ${type} event handler:`, error);
-      }
+              } catch (error) {
+          // Silently handle event handler errors to prevent crashes
+          // In production, consider logging to a proper logging service
+        }
     }
   }
 }

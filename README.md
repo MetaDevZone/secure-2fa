@@ -5,13 +5,15 @@ A secure, developer-friendly Node.js package for email-based OTP (2FA) with stro
 ## 🚀 Features
 
 - **🔒 Secure OTP Generation**: Cryptographically secure OTPs with HMAC protection
-- **📧 Multiple Email Providers**: Support for Nodemailer, SendGrid, Mailcub and custom providers
-- **🗄️ Flexible Database**: Works with any database via adapter pattern (Prisma, Mongoose, etc.)
+- **📧 Multiple Email Providers**: Support for Nodemailer, SendGrid, Brevo, Postmark, Mailgun and custom providers
+- **🗄️ Flexible Database**: Works with any database via adapter pattern (Prisma, Mongoose, MongoDB, etc.)
 - **⚡ Rate Limiting**: Built-in rate limiting with configurable windows
 - **🛡️ Security Controls**: Context binding, replay prevention, audit logging
 - **📱 TypeScript First**: Full TypeScript support with comprehensive types
 - **🎯 Event System**: Webhook-style events for monitoring and analytics
+- **🏥 Health Monitoring**: Built-in health checks for production monitoring
 - **🧪 Tested**: Comprehensive test suite with high coverage
+- **🚀 Zero Config**: Demo mode for instant testing and development
 
 ## 📦 Installation
 
@@ -81,6 +83,10 @@ const verification = await otpService.verify({
     deviceId: "device-123",
   },
 });
+
+// Health check for monitoring
+const health = await otpService.healthCheck();
+console.log("Service Health:", health.status);
 ```
 
 ### Choose Your Database
@@ -292,6 +298,50 @@ Run the test suite:
 ```bash
 npm test
 npm run test:coverage
+```
+
+## 📦 Publishing
+
+### Interactive Publishing (Recommended)
+
+Use the interactive publisher to automatically handle versioning:
+
+```bash
+npm run publish
+```
+
+This will:
+
+- ✅ Run all tests
+- ✅ Build the project
+- ✅ Ask you to select version type (patch/minor/major/custom)
+- ✅ Update package.json version
+- ✅ Publish to npm
+- ✅ Push git tags
+
+### Quick Publishing
+
+For quick version updates:
+
+```bash
+# Patch version (1.0.0 → 1.0.1)
+npm run publish:patch
+
+# Minor version (1.0.0 → 1.1.0)
+npm run publish:minor
+
+# Major version (1.0.0 → 2.0.0)
+npm run publish:major
+```
+
+### Manual Publishing
+
+```bash
+# Update version manually
+npm version patch|minor|major
+
+# Publish to npm
+npm publish --access public
 ```
 
 ## 📚 Examples

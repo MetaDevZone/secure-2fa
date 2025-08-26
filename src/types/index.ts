@@ -147,3 +147,33 @@ export class OtpError extends Error {
     this.name = 'OtpError';
   }
 }
+
+export interface OtpStats {
+  totalRequests: number;
+  totalSends: number;
+  totalVerifications: number;
+  totalFailures: number;
+  averageResponseTime: number;
+  successRate: number;
+}
+
+export interface HealthCheckResult {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  checks: {
+    database: boolean;
+    emailProvider: boolean;
+    rateLimiter: boolean;
+  };
+  timestamp: Date;
+  version: string;
+}
+
+export interface OtpMetrics {
+  requestsPerMinute: number;
+  successRate: number;
+  averageVerificationTime: number;
+  topFailureReasons: Array<{
+    reason: string;
+    count: number;
+  }>;
+}
