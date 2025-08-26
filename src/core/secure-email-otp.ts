@@ -1,0 +1,383 @@
+import {
+  OtpConfig,
+  OtpGenerationResult,
+  OtpVerificationResult,
+  RequestMeta,
+  DatabaseAdapter,
+  EmailProvider,
+  RateLimiterAdapter,
+  OtpError,
+  OtpErrorCode,
+  OtpEvent,
+  EventHandlers
+} from '../types';
+import { OtpGenerator } from './otp-generator';
+import { EmailTemplates, TemplateData } from '../templates/email-templates';
+
+export class SecureEmailOtp {
+  private readonly config: Required<OtpConfig>;
+  private readonly otpGenerator: OtpGenerator;
+  private readonly dbAdapter: DatabaseAdapter;
+  private readonly emailProvider: EmailProvider;
+  private readonly rateLimiter: RateLimiterAdapter;
+  private readonly events: EventHandlers;
+
+  constructor(
+    dbAdapter: DatabaseAdapter,
+    emailProvider: EmailProvider,
+    rateLimiter: RateLimiterAdapter,
+    serverSecret: string,
+    config: OtpConfig = {}
+  ) {
+    this.dbAdapter = dbAdapter;
+    this.emailProvider = emailProvider;
+    this.rateLimiter = rateLimiter;
+    this.otpGenerator = new OtpGenerator(serverSecret);
+    this.events = config.events || {};
+
+    // Set default configuration
+    this.config = {
+      otpLength: 6,
+      expiryMs: 2 * 60 * 1000, // 2 minutes
+      maxRetries: 5,
+      strictMode: true,
+      rateLimit: {
+        maxPerWindow: 3,
+        windowMs: 15 * 60 * 1000, // 15 minutes
+      },
+      templates: {
+        subject: EmailTemplates.getDefaultSubject(),
+        html: EmailTemplates.getDefaultHtml({} as TemplateData),
+        text: EmailTemplates.getDefaultText({} as TemplateData),
+        senderName: 'Dynamite Lifestyle',
+        senderEmail: 'info@dynamitelifestyle.com',
+      },
+      events: {},
+      ...config,
+    };
+  }
+
+  /**
+   * Generate and send OTP
+   */
+  async generate(params: {
+    email: string;
+    context: string;
+    requestMeta: RequestMeta;
+  }): Promise<OtpGenerationResult> {
+    const { email, context, requestMeta } = params;
+
+    // Validate inputs
+    if (!email || !context || !requestMeta) {
+      throw new OtpError(OtpErrorCode.INVALID, 'Missing required parameters');
+    }
+
+    // Check rate limiting
+    const rateLimitKey = `otp:${email}:${context}:email`;
+    const canProceed = await this.rateLimiter.checkLimit(
+      rateLimitKey,
+      this.config.rateLimit.maxPerWindow,
+      this.config.rateLimit.windowMs
+    );
+
+    if (!canProceed) {
+      await this.emitEvent('fail', { 
+        email, 
+        context, 
+        requestMeta 
+      }, new OtpError(OtpErrorCode.RATE_LIMITED, 'Rate limit exceeded'));
+      throw new OtpError(OtpErrorCode.RATE_LIMITED, 'Too many OTP requests. Please try again later.');
+    }
+
+    // Increment rate limit counter
+    await this.rateLimiter.increment(rateLimitKey);
+
+    await this.emitEvent('request', { email, context, requestMeta });
+
+    // Check for existing active OTP
+    const existingOtp = await this.dbAdapter.findActiveOtp(email, context, 'email');
+    
+    let sessionId: string;
+    if (existingOtp) {
+      // Reuse the existing session ID for resend
+      sessionId = existingOtp.sessionId;
+      // Mark the existing OTP as used to invalidate it
+      await this.dbAdapter.updateOtp(existingOtp.id, {
+        isUsed: true,
+      });
+    } else {
+      // Generate new session ID for first-time OTP
+      sessionId = this.otpGenerator.generateSessionId();
+    }
+
+    // Generate new OTP
+    const otp = this.otpGenerator.generateOtp(this.config.otpLength);
+    const expiresAt = new Date(Date.now() + this.config.expiryMs);
+
+    // Create OTP record
+    const otpRecord = await this.dbAdapter.createOtp({
+      email,
+      context,
+      sessionId,
+      channel: 'email',
+      otpHash: await this.otpGenerator.hashOtp(otp),
+      hmac: this.otpGenerator.createHmac(otp, context, sessionId),
+      expiresAt,
+      attempts: 0,
+      maxAttempts: this.config.maxRetries,
+      isUsed: false,
+      isLocked: false,
+      requestMeta,
+    });
+
+    // Send OTP via email
+    try {
+      await this.sendEmailOtp(email, otp, context);
+
+      await this.emitEvent('send', { 
+        email, 
+        context, 
+        sessionId, 
+        requestMeta 
+      });
+
+      return {
+        sessionId,
+        expiresAt,
+        isResent: !!existingOtp,
+        ...(this.config.strictMode ? {} : { otp }), // Only include in non-strict mode for debugging
+      };
+    } catch (error) {
+      // Clean up the OTP record if sending failed
+      await this.dbAdapter.deleteOtp(otpRecord.id);
+      
+      await this.emitEvent('fail', { 
+        email, 
+        context, 
+        sessionId, 
+        requestMeta 
+      }, error instanceof Error ? error : new Error(String(error)));
+      
+      throw new OtpError(OtpErrorCode.EMAIL_SEND_FAILED, `Failed to send email: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Verify OTP
+   */
+  async verify(params: {
+    email: string;
+    clientHash: string;
+    context: string;
+    sessionId: string;
+    requestMeta: RequestMeta;
+  }): Promise<OtpVerificationResult> {
+    const { email, clientHash, context, sessionId, requestMeta } = params;
+
+    // Validate inputs
+    if (!email || !clientHash || !context || !sessionId || !requestMeta) {
+      throw new OtpError(OtpErrorCode.INVALID, 'Missing required parameters');
+    }
+
+    // Find OTP record
+    const otpRecord = await this.dbAdapter.findOtp(email, context, sessionId, 'email');
+    
+    if (!otpRecord) {
+      await this.emitEvent('fail', { 
+        email, 
+        context, 
+        sessionId, 
+        requestMeta 
+      }, new OtpError(OtpErrorCode.INVALID, 'Invalid OTP'));
+      throw new OtpError(OtpErrorCode.INVALID, 'Invalid OTP');
+    }
+
+    // Check if OTP is already used
+    if (otpRecord.isUsed) {
+      await this.emitEvent('fail', { 
+        email, 
+        context, 
+        sessionId, 
+        requestMeta 
+      }, new OtpError(OtpErrorCode.ALREADY_USED, 'OTP already used'));
+      throw new OtpError(OtpErrorCode.ALREADY_USED, 'OTP has already been used');
+    }
+
+    // Check if OTP is locked
+    if (otpRecord.isLocked) {
+      await this.emitEvent('fail', { 
+        email, 
+        context, 
+        sessionId, 
+        requestMeta 
+      }, new OtpError(OtpErrorCode.LOCKED, 'OTP is locked'));
+      throw new OtpError(OtpErrorCode.LOCKED, 'OTP is locked due to too many failed attempts');
+    }
+
+    // Check if OTP is expired
+    if (otpRecord.expiresAt < new Date()) {
+      await this.emitEvent('fail', { 
+        email, 
+        context, 
+        sessionId, 
+        requestMeta 
+      }, new OtpError(OtpErrorCode.EXPIRED, 'OTP expired'));
+      throw new OtpError(OtpErrorCode.EXPIRED, 'OTP has expired');
+    }
+
+    // Verify OTP hash
+    const isValidHash = await this.otpGenerator.verifyOtpHash(clientHash, otpRecord.otpHash);
+    const isValidHmac = this.otpGenerator.verifyHmac(clientHash, context, sessionId, otpRecord.hmac);
+
+    if (!isValidHash || !isValidHmac) {
+      // Increment attempts
+      const newAttempts = otpRecord.attempts + 1;
+      const isLocked = newAttempts >= otpRecord.maxAttempts;
+
+      await this.dbAdapter.updateOtp(otpRecord.id, {
+        attempts: newAttempts,
+        isLocked,
+      });
+
+      if (isLocked) {
+        await this.emitEvent('fail', { 
+          email, 
+          context, 
+          sessionId, 
+          requestMeta 
+        }, new OtpError(OtpErrorCode.ATTEMPTS_EXCEEDED, 'Too many failed attempts'));
+        throw new OtpError(OtpErrorCode.ATTEMPTS_EXCEEDED, 'Too many failed attempts. OTP is now locked.');
+      }
+
+      await this.emitEvent('fail', { 
+        email, 
+        context, 
+        sessionId, 
+        requestMeta 
+      }, new OtpError(OtpErrorCode.INVALID, 'Invalid OTP'));
+      throw new OtpError(OtpErrorCode.INVALID, 'Invalid OTP');
+    }
+
+    // Check request metadata in strict mode
+    if (this.config.strictMode) {
+      const metaMismatch = this.checkMetaMismatch(otpRecord.requestMeta, requestMeta);
+      if (metaMismatch) {
+        await this.emitEvent('fail', { 
+          email, 
+          context, 
+          sessionId, 
+          requestMeta 
+        }, new OtpError(OtpErrorCode.META_MISMATCH, 'Request context mismatch'));
+        throw new OtpError(OtpErrorCode.META_MISMATCH, 'Request context mismatch');
+      }
+    }
+
+    // Mark OTP as used
+    await this.dbAdapter.updateOtp(otpRecord.id, {
+      isUsed: true,
+    });
+
+    await this.emitEvent('verify', { 
+      email, 
+      context, 
+      sessionId, 
+      requestMeta 
+    });
+
+    return {
+      success: true,
+      sessionId,
+      email,
+      context,
+      channel: 'email',
+    };
+  }
+
+  /**
+   * Cleanup expired OTPs
+   */
+  async cleanup(): Promise<void> {
+    await this.dbAdapter.cleanupExpiredOtps();
+  }
+
+  /**
+   * Send email OTP
+   */
+  private async sendEmailOtp(email: string, otp: string, context: string): Promise<void> {
+    const templateData: TemplateData = {
+      otp,
+      email,
+      context,
+      expiresIn: `${Math.floor(this.config.expiryMs / (1000 * 60))} minutes`,
+      companyName: this.config.templates.senderName,
+      supportEmail: this.config.templates.senderEmail,
+    };
+
+    // Get the template content (custom or default)
+    const htmlTemplate = this.config.templates.html || EmailTemplates.getDefaultHtml(templateData);
+    const textTemplate = this.config.templates.text || EmailTemplates.getDefaultText(templateData);
+    const subjectTemplate = this.config.templates.subject || EmailTemplates.getDefaultSubject();
+
+    // Always render templates with actual values, whether custom or default
+    const html = EmailTemplates.renderTemplate(htmlTemplate, templateData);
+    const text = EmailTemplates.renderTemplate(textTemplate, templateData);
+    const subject = EmailTemplates.renderTemplate(subjectTemplate, templateData);
+
+    const emailParams = {
+      to: email,
+      subject,
+      html,
+      text,
+      ...(this.config.templates.senderEmail && { from: this.config.templates.senderEmail }),
+    };
+
+    await this.emailProvider.sendEmail(emailParams);
+  }
+
+  /**
+   * Check if request metadata matches
+   */
+  private checkMetaMismatch(originalMeta: RequestMeta, currentMeta: RequestMeta): boolean {
+    return (
+      originalMeta.ip !== currentMeta.ip ||
+      originalMeta.userAgent !== currentMeta.userAgent ||
+      (originalMeta.deviceId ? originalMeta.deviceId !== currentMeta.deviceId : false) ||
+      (originalMeta.platform ? originalMeta.platform !== currentMeta.platform : false)
+    );
+  }
+
+  /**
+   * Emit event
+   */
+  private async emitEvent(
+    type: 'request' | 'send' | 'verify' | 'fail',
+    data: {
+      email: string;
+      context: string;
+      sessionId?: string;
+      requestMeta: RequestMeta;
+    },
+    error?: Error
+  ): Promise<void> {
+    const event: OtpEvent = {
+      type,
+      email: data.email,
+      context: data.context,
+      sessionId: data.sessionId || '',
+      channel: 'email',
+      requestMeta: data.requestMeta,
+      timestamp: new Date(),
+      ...(error && { error }),
+    };
+
+    const handler = this.events[`on${type.charAt(0).toUpperCase() + type.slice(1)}` as keyof EventHandlers];
+    if (handler) {
+      try {
+        await handler(event);
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error(`Error in ${type} event handler:`, error);
+      }
+    }
+  }
+}
