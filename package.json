@@ -39,6 +39,8 @@
     "publish": "node scripts/publish.js",
     "publish:demo": "node scripts/demo-publish.js"
   },
+
+  
   "keywords": [
     "otp",
     "2fa",
