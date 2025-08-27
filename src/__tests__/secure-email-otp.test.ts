@@ -117,7 +117,8 @@ describe('SecureEmailOtp', () => {
         requestMeta: mockRequestMeta,
       });
 
-      expect(result1.sessionId).toBe(result2.sessionId);
+      // Session IDs should be different since we always generate new ones
+      expect(result1.sessionId).not.toBe(result2.sessionId);
       expect(result2.isResent).toBe(true);
       expect(mockEmailProvider.sendEmail).toHaveBeenCalledTimes(2);
     });

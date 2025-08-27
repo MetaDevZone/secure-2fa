@@ -93,21 +93,36 @@ export class SecureEmailOtp {
 
     await this.emitEvent('request', { email, context, requestMeta });
 
+    // Clean up any conflicting OTPs first
+    try {
+      await this.dbAdapter.cleanupConflictingOtps(email, context, 'email');
+    } catch (cleanupError) {
+      console.warn('Failed to cleanup conflicting OTPs:', cleanupError);
+    }
+
     // Check for existing active OTP and clean it up
     const existingOtp = await this.dbAdapter.findActiveOtp(email, context, 'email');
+    let isResent = false;
     
-    let sessionId: string;
     if (existingOtp) {
-      // Reuse the existing session ID for resend
-      sessionId = existingOtp.sessionId;
       // Mark the existing OTP as used to invalidate it
-      await this.dbAdapter.updateOtp(existingOtp.id, {
-        isUsed: true,
-      });
-    } else {
-      // Generate new session ID for first-time OTP
-      sessionId = this.otpGenerator.generateSessionId();
+      try {
+        await this.dbAdapter.updateOtp(existingOtp.id, {
+          isUsed: true,
+        });
+        isResent = true;
+      } catch (error) {
+        // If update fails, try to delete the existing OTP
+        try {
+          await this.dbAdapter.deleteOtp(existingOtp.id);
+        } catch (deleteError) {
+          console.warn('Failed to clean up existing OTP:', deleteError);
+        }
+      }
     }
+
+    // Generate new session ID (always unique)
+    const sessionId = this.otpGenerator.generateSessionId();
 
     // Generate new OTP
     const otp = this.otpGenerator.generateOtp(this.config.otpLength);
@@ -121,21 +136,46 @@ export class SecureEmailOtp {
       throw new OtpError(OtpErrorCode.INVALID, 'Failed to create valid expiration date');
     }
 
-    // Create OTP record
-    const otpRecord = await this.dbAdapter.createOtp({
-      email,
-      context,
-      sessionId,
-      channel: 'email',
-      otpHash: await this.otpGenerator.hashOtp(otp),
-      hmac: this.otpGenerator.createHmac(otp, context, sessionId),
-      expiresAt,
-      attempts: 0,
-      maxAttempts: this.config.maxRetries,
-      isUsed: false,
-      isLocked: false,
-      requestMeta,
-    });
+    // Create OTP record with retry logic for duplicate key errors
+    let otpRecord;
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    while (retryCount < maxRetries) {
+      try {
+        otpRecord = await this.dbAdapter.createOtp({
+          email,
+          context,
+          sessionId: retryCount > 0 ? this.otpGenerator.generateSessionId() : sessionId,
+          channel: 'email',
+          otpHash: await this.otpGenerator.hashOtp(otp),
+          hmac: this.otpGenerator.createHmac(otp, context, sessionId),
+          expiresAt,
+          attempts: 0,
+          maxAttempts: this.config.maxRetries,
+          isUsed: false,
+          isLocked: false,
+          requestMeta,
+        });
+        break; // Success, exit retry loop
+      } catch (error: any) {
+        retryCount++;
+        
+        // Check if it's a duplicate key error
+        if (error.code === 11000 && retryCount < maxRetries) {
+          console.warn(`Duplicate key error on attempt ${retryCount}, retrying with new session ID...`);
+          // Continue to next iteration with new session ID
+          continue;
+        }
+        
+        // If it's not a duplicate key error or we've exhausted retries, throw the error
+        throw error;
+      }
+    }
+
+    if (!otpRecord) {
+      throw new OtpError(OtpErrorCode.DATABASE_ERROR, 'Failed to create OTP record after multiple attempts');
+    }
 
     // Send OTP via email
     try {
@@ -144,24 +184,28 @@ export class SecureEmailOtp {
       await this.emitEvent('send', { 
         email, 
         context, 
-        sessionId, 
+        sessionId: otpRecord.sessionId, 
         requestMeta 
       });
 
       return {
-        sessionId,
+        sessionId: otpRecord.sessionId,
         expiresAt,
-        isResent: !!existingOtp,
+        isResent,
         ...(this.config.strictMode ? {} : { otp }), // Only include in non-strict mode for debugging
       };
     } catch (error) {
       // Clean up the OTP record if sending failed
-      await this.dbAdapter.deleteOtp(otpRecord.id);
+      try {
+        await this.dbAdapter.deleteOtp(otpRecord.id);
+      } catch (cleanupError) {
+        console.error('Failed to clean up OTP record after email send failure:', cleanupError);
+      }
       
       await this.emitEvent('fail', { 
         email, 
         context, 
-        sessionId, 
+        sessionId: otpRecord.sessionId, 
         requestMeta 
       }, error instanceof Error ? error : new Error(String(error)));
       
