@@ -10,7 +10,17 @@ const otpSchema = new mongoose.Schema({
   channel: { type: String, required: true, enum: ['email', 'sms'], index: true },
   otpHash: { type: String, required: true },
   hmac: { type: String, required: true },
-  expiresAt: { type: Date, required: true, index: true },
+  expiresAt: { 
+    type: Date, 
+    required: true, 
+    index: true,
+    validate: {
+      validator: function(value: Date) {
+        return value instanceof Date && !isNaN(value.getTime());
+      },
+      message: 'expiresAt must be a valid date'
+    }
+  },
   attempts: { type: Number, default: 0 },
   maxAttempts: { type: Number, default: 5 },
   isUsed: { type: Boolean, default: false },
@@ -81,10 +91,24 @@ export class MongooseAdapter implements DatabaseAdapter {
   }
 
   async createOtp(otp: Omit<OtpRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<OtpRecord> {
-    const otpDoc = new this.model(otp);
-    const savedDoc = await otpDoc.save();
-    
-    return this.mapDocumentToOtpRecord(savedDoc);
+    try {
+      // Ensure expiresAt is a valid Date object
+      const otpData = {
+        ...otp,
+        expiresAt: this.ensureValidDate(otp.expiresAt)
+      };
+      
+      console.log('Creating OTP with expiresAt:', otpData.expiresAt, 'Type:', typeof otpData.expiresAt);
+      
+      const otpDoc = new this.model(otpData);
+      const savedDoc = await otpDoc.save();
+      
+      return this.mapDocumentToOtpRecord(savedDoc);
+    } catch (error) {
+      console.error('Error creating OTP:', error);
+      console.error('OTP data:', JSON.stringify(otp, null, 2));
+      throw error;
+    }
   }
 
   async findOtp(email: string, context: string, sessionId: string, channel: OtpChannel): Promise<OtpRecord | null> {
@@ -101,6 +125,11 @@ export class MongooseAdapter implements DatabaseAdapter {
   async updateOtp(id: string, updates: Partial<OtpRecord>): Promise<OtpRecord> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...updateData } = updates;
+    
+    // Ensure expiresAt is a valid Date object if it's being updated
+    if (updateData.expiresAt) {
+      updateData.expiresAt = this.ensureValidDate(updateData.expiresAt);
+    }
     
     const updatedDoc = await this.model.findByIdAndUpdate(
       id,
@@ -156,5 +185,27 @@ export class MongooseAdapter implements DatabaseAdapter {
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     };
+  }
+
+  /**
+   * Ensure that the provided value is a valid Date object
+   * @param dateValue - The date value to validate
+   * @returns A valid Date object
+   */
+  private ensureValidDate(dateValue: Date | string | number): Date {
+    // If it's already a valid Date object, return it
+    if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
+      return dateValue;
+    }
+    
+    // If it's a string or number, try to create a new Date
+    const newDate = new Date(dateValue);
+    
+    // Check if the new date is valid
+    if (isNaN(newDate.getTime())) {
+      throw new Error(`Invalid date value: ${dateValue}. Cannot convert to valid Date object.`);
+    }
+    
+    return newDate;
   }
 }

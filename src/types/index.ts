@@ -42,6 +42,13 @@ export interface OtpGenerationResult {
   otp?: string; // For debugging purposes only
 }
 
+export interface OtpGenerationParams {
+  email: string;
+  context: string;
+  requestMeta: RequestMeta;
+  template?: EmailTemplates; // Optional custom template for this specific OTP
+}
+
 export interface OtpVerificationResult {
   success: boolean;
   sessionId: string;
@@ -120,7 +127,7 @@ export interface DatabaseAdapter {
 
 export interface RateLimiterAdapter {
   checkLimit(key: string, limit: number, windowMs: number): Promise<boolean>;
-  increment(key: string): Promise<void>;
+  increment(key: string, windowMs?: number): Promise<void>;
   reset(key: string): Promise<void>;
 }
 

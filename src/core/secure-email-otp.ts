@@ -2,6 +2,7 @@ import {
   OtpConfig,
   OtpGenerationResult,
   OtpVerificationResult,
+  OtpGenerationParams,
   RequestMeta,
   DatabaseAdapter,
   EmailProvider,
@@ -13,7 +14,8 @@ import {
   HealthCheckResult
 } from '../types';
 import { OtpGenerator } from './otp-generator';
-import { EmailTemplates, TemplateData } from '../templates/email-templates';
+import { EmailTemplates as EmailTemplatesClass, TemplateData } from '../templates/email-templates';
+import { EmailTemplates } from '../types';
 
 export class SecureEmailOtp {
   private readonly config: Required<OtpConfig>;
@@ -47,9 +49,9 @@ export class SecureEmailOtp {
         windowMs: 15 * 60 * 1000, // 15 minutes
       },
       templates: {
-        subject: EmailTemplates.getDefaultSubject(),
-        html: EmailTemplates.getDefaultHtml({} as TemplateData),
-        text: EmailTemplates.getDefaultText({} as TemplateData),
+        subject: EmailTemplatesClass.getDefaultSubject(),
+        html: EmailTemplatesClass.getDefaultHtml({} as TemplateData),
+        text: EmailTemplatesClass.getDefaultText({} as TemplateData),
         senderName: 'Dynamite Lifestyle',
         senderEmail: 'info@dynamitelifestyle.com',
       },
@@ -61,12 +63,8 @@ export class SecureEmailOtp {
   /**
    * Generate and send OTP
    */
-  async generate(params: {
-    email: string;
-    context: string;
-    requestMeta: RequestMeta;
-  }): Promise<OtpGenerationResult> {
-    const { email, context, requestMeta } = params;
+  async generate(params: OtpGenerationParams): Promise<OtpGenerationResult> {
+    const { email, context, requestMeta, template } = params;
 
     // Validate inputs
     if (!email || !context || !requestMeta) {
@@ -74,7 +72,7 @@ export class SecureEmailOtp {
     }
 
     // Check rate limiting
-    const rateLimitKey = `otp:${email}:${context}:email`;
+    const rateLimitKey = `otp:${email}:email`; // Rate limit per email, not per email+context
     const canProceed = await this.rateLimiter.checkLimit(
       rateLimitKey,
       this.config.rateLimit.maxPerWindow,
@@ -91,7 +89,7 @@ export class SecureEmailOtp {
     }
 
     // Increment rate limit counter
-    await this.rateLimiter.increment(rateLimitKey);
+    await this.rateLimiter.increment(rateLimitKey, this.config.rateLimit.windowMs);
 
     await this.emitEvent('request', { email, context, requestMeta });
 
@@ -113,7 +111,15 @@ export class SecureEmailOtp {
 
     // Generate new OTP
     const otp = this.otpGenerator.generateOtp(this.config.otpLength);
-    const expiresAt = new Date(Date.now() + this.config.expiryMs);
+    
+    // Ensure we create a valid date for expiration
+    const expiryTimestamp = Date.now() + this.config.expiryMs;
+    const expiresAt = new Date(expiryTimestamp);
+    
+    // Validate the created date
+    if (isNaN(expiresAt.getTime())) {
+      throw new OtpError(OtpErrorCode.INVALID, 'Failed to create valid expiration date');
+    }
 
     // Create OTP record
     const otpRecord = await this.dbAdapter.createOtp({
@@ -133,7 +139,7 @@ export class SecureEmailOtp {
 
     // Send OTP via email
     try {
-      await this.sendEmailOtp(email, otp, context);
+      await this.sendEmailOtp(email, otp, context, template);
 
       await this.emitEvent('send', { 
         email, 
@@ -361,7 +367,7 @@ export class SecureEmailOtp {
   /**
    * Send email OTP
    */
-  private async sendEmailOtp(email: string, otp: string, context: string): Promise<void> {
+  private async sendEmailOtp(email: string, otp: string, context: string, customTemplate?: EmailTemplates): Promise<void> {
     const templateData: TemplateData = {
       otp,
       email,
@@ -371,22 +377,25 @@ export class SecureEmailOtp {
       supportEmail: this.config.templates.senderEmail,
     };
 
+    // Use custom template if provided, otherwise fall back to default templates
+    const effectiveTemplate = customTemplate || this.config.templates;
+    
     // Get the template content (custom or default)
-    const htmlTemplate = this.config.templates.html || EmailTemplates.getDefaultHtml(templateData);
-    const textTemplate = this.config.templates.text || EmailTemplates.getDefaultText(templateData);
-    const subjectTemplate = this.config.templates.subject || EmailTemplates.getDefaultSubject();
+    const htmlTemplate = effectiveTemplate.html || EmailTemplatesClass.getDefaultHtml(templateData);
+    const textTemplate = effectiveTemplate.text || EmailTemplatesClass.getDefaultText(templateData);
+    const subjectTemplate = effectiveTemplate.subject || EmailTemplatesClass.getDefaultSubject();
 
     // Always render templates with actual values, whether custom or default
-    const html = EmailTemplates.renderTemplate(htmlTemplate, templateData);
-    const text = EmailTemplates.renderTemplate(textTemplate, templateData);
-    const subject = EmailTemplates.renderTemplate(subjectTemplate, templateData);
+    const html = EmailTemplatesClass.renderTemplate(htmlTemplate, templateData);
+    const text = EmailTemplatesClass.renderTemplate(textTemplate, templateData);
+    const subject = EmailTemplatesClass.renderTemplate(subjectTemplate, templateData);
 
     const emailParams = {
       to: email,
       subject,
       html,
       text,
-      ...(this.config.templates.senderEmail && { from: this.config.templates.senderEmail }),
+      ...(effectiveTemplate.senderEmail && { from: effectiveTemplate.senderEmail }),
     };
 
     await this.emailProvider.sendEmail(emailParams);

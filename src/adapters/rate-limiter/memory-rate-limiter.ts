@@ -8,9 +8,7 @@ interface RateLimitEntry {
 export class MemoryRateLimiterAdapter implements RateLimiterAdapter {
   private limits: Map<string, RateLimitEntry> = new Map();
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async checkLimit(key: string, limit: number, _windowMs: number): Promise<boolean> {
-    // _windowMs is not used in this implementation but required by interface
     const now = Date.now();
     const entry = this.limits.get(key);
 
@@ -27,7 +25,7 @@ export class MemoryRateLimiterAdapter implements RateLimiterAdapter {
     return entry.count < limit;
   }
 
-  async increment(key: string): Promise<void> {
+  async increment(key: string, windowMs: number = 60000): Promise<void> {
     const now = Date.now();
     const entry = this.limits.get(key);
 
@@ -35,13 +33,13 @@ export class MemoryRateLimiterAdapter implements RateLimiterAdapter {
       // First request in this window
       this.limits.set(key, {
         count: 1,
-        resetTime: now + 60000, // Default 1 minute window
+        resetTime: now + windowMs,
       });
     } else if (now > entry.resetTime) {
       // Window has expired, reset
       this.limits.set(key, {
         count: 1,
-        resetTime: now + 60000,
+        resetTime: now + windowMs,
       });
     } else {
       // Increment existing count
