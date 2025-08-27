@@ -123,6 +123,7 @@ export interface DatabaseAdapter {
   deleteOtp(id: string): Promise<void>;
   findActiveOtp(email: string, context: string, channel: OtpChannel): Promise<OtpRecord | null>;
   cleanupExpiredOtps(): Promise<void>;
+  cleanupConflictingOtps(email: string, context: string, channel: OtpChannel): Promise<void>;
 }
 
 export interface RateLimiterAdapter {

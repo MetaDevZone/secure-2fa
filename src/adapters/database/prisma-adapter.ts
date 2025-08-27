@@ -5,6 +5,7 @@ export interface PrismaClient {
     create: (data: any) => Promise<any>;
     findUnique: (params: any) => Promise<any>;
     findFirst: (params: any) => Promise<any>;
+    findMany: (params: any) => Promise<any[]>;
     update: (params: any) => Promise<any>;
     delete: (params: any) => Promise<any>;
     deleteMany: (params: any) => Promise<any>;
@@ -105,6 +106,37 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         },
       },
     });
+  }
+
+  async cleanupConflictingOtps(email: string, context: string, channel: OtpChannel): Promise<void> {
+    // Find all OTPs for this email/context/channel combination
+    const conflictingOtps = await this.prisma.otp.findMany({
+      where: {
+        email,
+        context,
+        channel,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (conflictingOtps.length > 1) {
+      // Keep only the most recent one, delete the rest
+      const otpsToDelete = conflictingOtps.slice(1); // All except the most recent
+      const idsToDelete = otpsToDelete.map((otp: any) => otp.id);
+      
+      if (idsToDelete.length > 0) {
+        await this.prisma.otp.deleteMany({
+          where: {
+            id: {
+              in: idsToDelete,
+            },
+          },
+        });
+        console.log(`Cleaned up ${idsToDelete.length} conflicting OTPs for ${email}:${context}`);
+      }
+    }
   }
 
   private mapPrismaToOtpRecord(prismaOtp: any): OtpRecord {

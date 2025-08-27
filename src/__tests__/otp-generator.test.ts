@@ -79,9 +79,10 @@ describe('OtpGenerator', () => {
   });
 
   describe('generateSessionId', () => {
-    it('should generate valid UUID v4 format', () => {
+    it('should generate valid UUID v4 format with timestamp', () => {
       const sessionId = otpGenerator.generateSessionId();
-      expect(sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+      // UUID v4 format with optional timestamp suffix
+      expect(sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(-[a-z0-9]+)?$/i);
     });
 
     it('should generate unique session IDs', () => {

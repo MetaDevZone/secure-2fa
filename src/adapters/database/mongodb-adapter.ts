@@ -146,6 +146,30 @@ export class MongoDbAdapter implements DatabaseAdapter {
     });
   }
 
+  async cleanupConflictingOtps(email: string, context: string, channel: OtpChannel): Promise<void> {
+    // Find all OTPs for this email/context/channel combination
+    const conflictingOtps = await this.collection.find({
+      email,
+      context,
+      channel,
+    }).toArray();
+
+    if (conflictingOtps.length > 1) {
+      // Keep only the most recent one, delete the rest
+      const sortedOtps = conflictingOtps.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      
+      const otpsToDelete = sortedOtps.slice(1); // All except the most recent
+      const idsToDelete = otpsToDelete.map(otp => otp._id);
+      
+      if (idsToDelete.length > 0) {
+        await this.collection.deleteMany({ _id: { $in: idsToDelete } });
+        console.log(`Cleaned up ${idsToDelete.length} conflicting OTPs for ${email}:${context}`);
+      }
+    }
+  }
+
   private mapDocumentToOtpRecord(doc: any): OtpRecord {
     return {
       id: doc._id.toString(),

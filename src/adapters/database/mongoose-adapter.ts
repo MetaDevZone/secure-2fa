@@ -162,9 +162,51 @@ export class MongooseAdapter implements DatabaseAdapter {
   }
 
   async cleanupExpiredOtps(): Promise<void> {
+    // Clean up expired OTPs
     await this.model.deleteMany({
       expiresAt: { $lte: new Date() },
     });
+
+    // Clean up used OTPs older than 1 hour
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    await this.model.deleteMany({
+      isUsed: true,
+      createdAt: { $lte: oneHourAgo },
+    });
+
+    // Clean up locked OTPs older than 30 minutes
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    await this.model.deleteMany({
+      isLocked: true,
+      createdAt: { $lte: thirtyMinutesAgo },
+    });
+  }
+
+  /**
+   * Clean up conflicting OTPs for a specific email and context
+   */
+  async cleanupConflictingOtps(email: string, context: string, channel: OtpChannel): Promise<void> {
+    // Find all OTPs for this email/context/channel combination
+    const conflictingOtps = await this.model.find({
+      email,
+      context,
+      channel,
+    });
+
+    if (conflictingOtps.length > 1) {
+      // Keep only the most recent one, delete the rest
+      const sortedOtps = conflictingOtps.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      
+      const otpsToDelete = sortedOtps.slice(1); // All except the most recent
+      const idsToDelete = otpsToDelete.map(otp => otp._id);
+      
+      if (idsToDelete.length > 0) {
+        await this.model.deleteMany({ _id: { $in: idsToDelete } });
+        console.log(`Cleaned up ${idsToDelete.length} conflicting OTPs for ${email}:${context}`);
+      }
+    }
   }
 
   private mapDocumentToOtpRecord(doc: OtpDocument): OtpRecord {

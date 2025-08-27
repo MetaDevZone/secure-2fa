@@ -73,12 +73,39 @@ export class MemoryDatabaseAdapter implements DatabaseAdapter {
     const expiredIds: string[] = [];
 
     for (const [id, otp] of this.otps.entries()) {
-      if (otp.expiresAt < now) {
+      if (otp.expiresAt <= now) {
         expiredIds.push(id);
       }
     }
 
     expiredIds.forEach(id => this.otps.delete(id));
+  }
+
+  async cleanupConflictingOtps(email: string, context: string, channel: OtpChannel): Promise<void> {
+    // Find all OTPs for this email/context/channel combination
+    const conflictingOtps: OtpRecord[] = [];
+    
+    for (const otp of this.otps.values()) {
+      if (otp.email === email && otp.context === context && otp.channel === channel) {
+        conflictingOtps.push(otp);
+      }
+    }
+
+    if (conflictingOtps.length > 1) {
+      // Keep only the most recent one, remove the rest
+      const sortedOtps = conflictingOtps.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      
+      const otpsToRemove = sortedOtps.slice(1); // All except the most recent
+      const idsToRemove = otpsToRemove.map(otp => otp.id);
+      
+      idsToRemove.forEach(id => this.otps.delete(id));
+      
+      if (idsToRemove.length > 0) {
+        console.log(`Cleaned up ${idsToRemove.length} conflicting OTPs for ${email}:${context}`);
+      }
+    }
   }
 
   private generateId(): string {

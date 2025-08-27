@@ -76,7 +76,7 @@ export class OtpGenerator {
   }
 
   /**
-   * Generate session ID (UUID v4)
+   * Generate session ID (UUID v4 with timestamp)
    */
   generateSessionId(): string {
     const bytes = randomBytes(16);
@@ -86,13 +86,17 @@ export class OtpGenerator {
     bytes[8] = (bytes[8]! & 0x3f) | 0x80;
     
     const hex = bytes.toString('hex');
-    return [
+    const uuid = [
       hex.slice(0, 8),
       hex.slice(8, 12),
       hex.slice(12, 16),
       hex.slice(16, 20),
       hex.slice(20, 32)
     ].join('-');
+    
+    // Add timestamp to make it even more unique
+    const timestamp = Date.now().toString(36);
+    return `${uuid}-${timestamp}`;
   }
 
   /**

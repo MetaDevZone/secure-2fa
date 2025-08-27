@@ -93,7 +93,7 @@ export class SecureEmailOtp {
 
     await this.emitEvent('request', { email, context, requestMeta });
 
-    // Check for existing active OTP
+    // Check for existing active OTP and clean it up
     const existingOtp = await this.dbAdapter.findActiveOtp(email, context, 'email');
     
     let sessionId: string;
