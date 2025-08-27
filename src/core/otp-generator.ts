@@ -72,6 +72,16 @@ export class OtpGenerator {
    * Verify OTP hash
    */
   async verifyOtpHash(otp: string, hash: string): Promise<boolean> {
+    // Validate inputs are strings
+    if (typeof otp !== 'string' || typeof hash !== 'string') {
+      throw new Error('OTP and hash must be strings');
+    }
+    
+    // Validate inputs are not empty
+    if (!otp || !hash) {
+      throw new Error('OTP and hash cannot be empty');
+    }
+    
     return bcrypt.compare(otp, hash);
   }
 

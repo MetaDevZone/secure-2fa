@@ -242,6 +242,14 @@ describe('SecureEmailOtp', () => {
     });
 
     it('should increment attempts on failed verification', async () => {
+      // Create a fresh OTP for this test with a unique session ID
+      const testSessionId = 'attempts-test-' + Date.now();
+      const generateResult = await secureOtp.generate({
+        email: 'test@example.com',
+        context: 'login',
+        requestMeta: mockRequestMeta,
+      });
+
       // Mock bcrypt.compare to return false for invalid OTP
       const bcrypt = require('bcrypt');
       bcrypt.compare.mockResolvedValueOnce(false);
@@ -249,19 +257,27 @@ describe('SecureEmailOtp', () => {
       await expect(
         secureOtp.verify({
           email: 'test@example.com',
-          clientHash: 'wrong-otp',
+          otpCode: 'wrong-otp',
           context: 'login',
-          sessionId,
+          sessionId: generateResult.sessionId,
           requestMeta: mockRequestMeta,
         })
       ).rejects.toThrow(OtpError);
 
       // Check that attempts were incremented
-      const otpRecord = await dbAdapter.findOtp('test@example.com', 'login', sessionId, 'email');
+      const otpRecord = await dbAdapter.findOtp('test@example.com', 'login', generateResult.sessionId, 'email');
       expect(otpRecord!.attempts).toBe(1);
     });
 
     it('should lock OTP after max attempts', async () => {
+      // Create a fresh OTP for this test with a unique session ID
+      const testSessionId = 'lock-test-' + Date.now();
+      const generateResult = await secureOtp.generate({
+        email: 'test@example.com',
+        context: 'login',
+        requestMeta: mockRequestMeta,
+      });
+
       // Mock bcrypt.compare to return false
       const bcrypt = require('bcrypt');
       bcrypt.compare.mockResolvedValue(false);
@@ -271,16 +287,16 @@ describe('SecureEmailOtp', () => {
         await expect(
           secureOtp.verify({
             email: 'test@example.com',
-            clientHash: 'wrong-otp',
+            otpCode: 'wrong-otp',
             context: 'login',
-            sessionId,
+            sessionId: generateResult.sessionId,
             requestMeta: mockRequestMeta,
           })
         ).rejects.toThrow(OtpError);
       }
 
       // Check that OTP is locked
-      const otpRecord = await dbAdapter.findOtp('test@example.com', 'login', sessionId, 'email');
+      const otpRecord = await dbAdapter.findOtp('test@example.com', 'login', generateResult.sessionId, 'email');
       expect(otpRecord!.isLocked).toBe(true);
     });
   });

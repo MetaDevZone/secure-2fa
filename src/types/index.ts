@@ -49,6 +49,14 @@ export interface OtpGenerationParams {
   template?: EmailTemplates; // Optional custom template for this specific OTP
 }
 
+export interface OtpVerificationParams {
+  email: string;
+  otpCode: string; // The actual OTP code entered by user
+  context: string;
+  sessionId: string;
+  requestMeta: RequestMeta;
+}
+
 export interface OtpVerificationResult {
   success: boolean;
   sessionId: string;

@@ -11,7 +11,8 @@ import {
   OtpErrorCode,
   OtpEvent,
   EventHandlers,
-  HealthCheckResult
+  HealthCheckResult,
+  OtpVerificationParams
 } from '../types';
 import { OtpGenerator } from './otp-generator';
 import { EmailTemplates as EmailTemplatesClass, TemplateData } from '../templates/email-templates';
@@ -237,18 +238,17 @@ export class SecureEmailOtp {
   /**
    * Verify OTP
    */
-  async verify(params: {
-    email: string;
-    clientHash: string;
-    context: string;
-    sessionId: string;
-    requestMeta: RequestMeta;
-  }): Promise<OtpVerificationResult> {
-    const { email, clientHash, context, sessionId, requestMeta } = params;
+  async verify(params: OtpVerificationParams): Promise<OtpVerificationResult> {
+    const { email, otpCode, context, sessionId, requestMeta } = params;
 
     // Validate inputs
-    if (!email || !clientHash || !context || !sessionId || !requestMeta) {
+    if (!email || !otpCode || !context || !sessionId || !requestMeta) {
       throw new OtpError(OtpErrorCode.INVALID, 'Missing required parameters');
+    }
+
+    // Validate OTP code format (should be numeric string)
+    if (!/^\d+$/.test(otpCode)) {
+      throw new OtpError(OtpErrorCode.INVALID, 'Invalid OTP format. OTP must contain only digits.');
     }
 
     // Find OTP record
@@ -262,6 +262,17 @@ export class SecureEmailOtp {
         requestMeta 
       }, new OtpError(OtpErrorCode.INVALID, 'Invalid OTP'));
       throw new OtpError(OtpErrorCode.INVALID, 'Invalid OTP');
+    }
+
+    // Validate stored hash is a string
+    if (typeof otpRecord.otpHash !== 'string' || !otpRecord.otpHash) {
+      await this.emitEvent('fail', { 
+        email, 
+        context, 
+        sessionId, 
+        requestMeta 
+      }, new OtpError(OtpErrorCode.DATABASE_ERROR, 'Invalid OTP hash in database'));
+      throw new OtpError(OtpErrorCode.DATABASE_ERROR, 'Invalid OTP hash in database');
     }
 
     // Check if OTP is already used
@@ -297,9 +308,23 @@ export class SecureEmailOtp {
       throw new OtpError(OtpErrorCode.EXPIRED, 'OTP has expired');
     }
 
-    // Verify OTP hash
-    const isValidHash = await this.otpGenerator.verifyOtpHash(clientHash, otpRecord.otpHash);
-    const isValidHmac = this.otpGenerator.verifyHmac(clientHash, context, sessionId, otpRecord.hmac);
+    // Verify OTP hash (compare plain OTP with stored hash)
+    let isValidHash = false;
+    try {
+      isValidHash = await this.otpGenerator.verifyOtpHash(otpCode, otpRecord.otpHash);
+    } catch (error) {
+      // Log hash verification error but don't expose details
+      await this.emitEvent('fail', { 
+        email, 
+        context, 
+        sessionId, 
+        requestMeta 
+      }, new OtpError(OtpErrorCode.DATABASE_ERROR, 'OTP verification failed'));
+      throw new OtpError(OtpErrorCode.DATABASE_ERROR, 'OTP verification failed');
+    }
+
+    // Verify HMAC
+    const isValidHmac = this.otpGenerator.verifyHmac(otpCode, context, sessionId, otpRecord.hmac);
 
     if (!isValidHash || !isValidHmac) {
       // Increment attempts
