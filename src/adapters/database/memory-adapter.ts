@@ -103,7 +103,7 @@ export class MemoryDatabaseAdapter implements DatabaseAdapter {
       idsToRemove.forEach(id => this.otps.delete(id));
       
       if (idsToRemove.length > 0) {
-        console.log(`Cleaned up ${idsToRemove.length} conflicting OTPs for ${email}:${context}`);
+        // Cleanup completed successfully - no logging needed in production
       }
     }
   }

@@ -7,6 +7,11 @@ interface RateLimitEntry {
 
 export class MemoryRateLimiterAdapter implements RateLimiterAdapter {
   private limits: Map<string, RateLimitEntry> = new Map();
+  private cleanupInterval: NodeJS.Timeout | null = null;
+
+  constructor() {
+    this.startCleanup();
+  }
 
   async checkLimit(key: string, limit: number, _windowMs: number): Promise<boolean> {
     const now = Date.now();
@@ -63,5 +68,35 @@ export class MemoryRateLimiterAdapter implements RateLimiterAdapter {
   getCount(key: string): number {
     const entry = this.limits.get(key);
     return entry ? entry.count : 0;
+  }
+
+  // Cleanup method for graceful shutdown
+  destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    this.limits.clear();
+  }
+
+  // Automatic cleanup to prevent memory leaks
+  private startCleanup(): void {
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupExpiredEntries();
+    }, 5 * 60 * 1000); // Clean up every 5 minutes
+    
+    // Unref to prevent keeping the process alive
+    if (this.cleanupInterval) {
+      this.cleanupInterval.unref();
+    }
+  }
+
+  private cleanupExpiredEntries(): void {
+    const now = Date.now();
+    this.limits.forEach((entry, key) => {
+      if (now > entry.resetTime) {
+        this.limits.delete(key);
+      }
+    });
   }
 }

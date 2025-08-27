@@ -134,7 +134,7 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
             },
           },
         });
-        console.log(`Cleaned up ${idsToDelete.length} conflicting OTPs for ${email}:${context}`);
+        // Cleanup completed successfully - no logging needed in production
       }
     }
   }

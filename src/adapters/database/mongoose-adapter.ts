@@ -98,16 +98,14 @@ export class MongooseAdapter implements DatabaseAdapter {
         expiresAt: this.ensureValidDate(otp.expiresAt)
       };
       
-      console.log('Creating OTP with expiresAt:', otpData.expiresAt, 'Type:', typeof otpData.expiresAt);
-      
       const otpDoc = new this.model(otpData);
       const savedDoc = await otpDoc.save();
       
       return this.mapDocumentToOtpRecord(savedDoc);
     } catch (error) {
-      console.error('Error creating OTP:', error);
-      console.error('OTP data:', JSON.stringify(otp, null, 2));
-      throw error;
+      // Enhanced error handling without console logging
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to create OTP: ${errorMessage}`);
     }
   }
 
@@ -204,7 +202,7 @@ export class MongooseAdapter implements DatabaseAdapter {
       
       if (idsToDelete.length > 0) {
         await this.model.deleteMany({ _id: { $in: idsToDelete } });
-        console.log(`Cleaned up ${idsToDelete.length} conflicting OTPs for ${email}:${context}`);
+        // Cleanup completed successfully - no logging needed in production
       }
     }
   }

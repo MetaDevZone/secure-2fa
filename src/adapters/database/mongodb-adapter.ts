@@ -165,7 +165,7 @@ export class MongoDbAdapter implements DatabaseAdapter {
       
       if (idsToDelete.length > 0) {
         await this.collection.deleteMany({ _id: { $in: idsToDelete } });
-        console.log(`Cleaned up ${idsToDelete.length} conflicting OTPs for ${email}:${context}`);
+        // Cleanup completed successfully - no logging needed in production
       }
     }
   }

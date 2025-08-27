@@ -97,7 +97,12 @@ export class SecureEmailOtp {
     try {
       await this.dbAdapter.cleanupConflictingOtps(email, context, 'email');
     } catch (cleanupError) {
-      console.warn('Failed to cleanup conflicting OTPs:', cleanupError);
+      // Log cleanup failure but don't block OTP generation
+      await this.emitEvent('fail', { 
+        email, 
+        context, 
+        requestMeta 
+      }, new OtpError(OtpErrorCode.DATABASE_ERROR, 'Failed to cleanup conflicting OTPs'));
     }
 
     // Check for existing active OTP and clean it up
@@ -116,7 +121,12 @@ export class SecureEmailOtp {
         try {
           await this.dbAdapter.deleteOtp(existingOtp.id);
         } catch (deleteError) {
-          console.warn('Failed to clean up existing OTP:', deleteError);
+          // Log cleanup failure but don't block OTP generation
+          await this.emitEvent('fail', { 
+            email, 
+            context, 
+            requestMeta 
+          }, new OtpError(OtpErrorCode.DATABASE_ERROR, 'Failed to clean up existing OTP'));
         }
       }
     }
@@ -163,7 +173,12 @@ export class SecureEmailOtp {
         
         // Check if it's a duplicate key error
         if (error.code === 11000 && retryCount < maxRetries) {
-          console.warn(`Duplicate key error on attempt ${retryCount}, retrying with new session ID...`);
+          // Log retry failure but don't block OTP generation
+          await this.emitEvent('fail', { 
+            email, 
+            context, 
+            requestMeta 
+          }, new OtpError(OtpErrorCode.DATABASE_ERROR, 'Duplicate key error on attempt'));
           // Continue to next iteration with new session ID
           continue;
         }
@@ -199,7 +214,13 @@ export class SecureEmailOtp {
       try {
         await this.dbAdapter.deleteOtp(otpRecord.id);
       } catch (cleanupError) {
-        console.error('Failed to clean up OTP record after email send failure:', cleanupError);
+        // Log cleanup failure but don't block OTP generation
+        await this.emitEvent('fail', { 
+          email, 
+          context, 
+          sessionId: otpRecord.sessionId, 
+          requestMeta 
+        }, new OtpError(OtpErrorCode.DATABASE_ERROR, 'Failed to clean up OTP record after email send failure'));
       }
       
       await this.emitEvent('fail', { 
