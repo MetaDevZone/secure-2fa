@@ -1,6 +1,6 @@
 {
   "name": "secure-2fa",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A secure, developer-friendly Node.js package for email-based OTP (2FA) with strong security controls",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -39,8 +39,6 @@
     "publish": "node scripts/publish.js",
     "publish:demo": "node scripts/demo-publish.js"
   },
-
-  
   "keywords": [
     "otp",
     "2fa",
@@ -72,7 +70,6 @@
     "postmark": "^4.0.5",
     "uuid": "^9.0.1"
   },
-
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
     "@types/express": "^5.0.3",
